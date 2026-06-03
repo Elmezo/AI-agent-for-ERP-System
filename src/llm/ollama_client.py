@@ -15,7 +15,9 @@ import json
 import re
 from typing import Any, TypeVar
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from collections.abc import Sequence
+
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
 from pydantic import BaseModel, ValidationError
 
@@ -80,6 +82,28 @@ class OllamaLLM:
     async def complete(self, system: str, user: str) -> tuple[str, dict[str, int]]:
         """Generate free-form text. Returns ``(text, token_usage)``."""
         messages = [SystemMessage(content=system), HumanMessage(content=user)]
+        response = await self._text_llm.ainvoke(messages)
+        text = _THINK_RE.sub("", str(response.content)).strip()
+        return text, self._usage(response)
+
+    async def chat(
+        self, system: str, history: Sequence[dict[str, str]]
+    ) -> tuple[str, dict[str, int]]:
+        """Hold a multi-turn conversation. Returns ``(text, token_usage)``.
+
+        ``history`` is an ordered list of ``{"role": ..., "content": ...}`` turns
+        (``user``/``assistant``). Passing real history lets the model behave like
+        a normal chat assistant with memory of the conversation.
+        """
+        messages: list[Any] = [SystemMessage(content=system)]
+        for turn in history:
+            content = str(turn.get("content", "")).strip()
+            if not content:
+                continue
+            if turn.get("role") == "assistant":
+                messages.append(AIMessage(content=content))
+            else:
+                messages.append(HumanMessage(content=content))
         response = await self._text_llm.ainvoke(messages)
         text = _THINK_RE.sub("", str(response.content)).strip()
         return text, self._usage(response)

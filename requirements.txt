@@ -9,6 +9,9 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 httpx>=0.27.0
 
+# Web search (general-knowledge / real-time fallback)
+tavily-python>=0.7.0
+
 # Resilience / validation / config
 tenacity>=8.5.0
 pydantic>=2.10.0,<3.0.0

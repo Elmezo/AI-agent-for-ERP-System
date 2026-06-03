@@ -11,7 +11,7 @@ import re
 
 from src.config.registry import Registry
 from src.models.plan import ExecutionPlan, PlanIntent, PlanStep, StepKind
-from src.nodes.conversation import detect_recall_topic, detect_smalltalk
+from src.nodes.conversation import detect_recall_topic
 
 # Intent keywords (English + Arabic) used to classify the question.
 _COUNT_WORDS = ("how many", "count", "number of", "list all", "all the", "كم", "عدد", "اعرض", "كل")
@@ -54,19 +54,6 @@ class FallbackPlanner:
                 language=language,
                 intent=PlanIntent.RECALL,
                 recall_topic=recall_topic,
-                used_fallback=True,
-            )
-
-        # Social/meta turns (greetings, thanks, "what can you do?") get a
-        # deterministic reply - no ERP, no LLM.
-        smalltalk_topic = detect_smalltalk(question)
-        if smalltalk_topic is not None:
-            return ExecutionPlan(
-                goal=question.strip(),
-                steps=[],
-                language=language,
-                intent=PlanIntent.SMALLTALK,
-                smalltalk_topic=smalltalk_topic,
                 used_fallback=True,
             )
 

@@ -16,6 +16,7 @@ from src.memory.repository import MemoryRepository
 from src.planner.llm_planner import LLMPlanner
 from src.services.api_client import ApiClient
 from src.services.facet_service import FacetService
+from src.services.web_search_service import WebSearchService
 
 
 @dataclass
@@ -29,6 +30,8 @@ class PipelineDeps:
     planner: LLMPlanner
     llm: OllamaLLM
     memory: MemoryRepository
+    # Optional: present only when a Tavily API key is configured.
+    web_search: WebSearchService | None = None
 
     @property
     def max_rel_depth(self) -> int:

@@ -61,6 +61,15 @@ class Settings(BaseSettings):
     # (e.g. Maxwell CC 5.0) where the CUDA backend crashes during model load.
     ollama_num_gpu: int | None = None
 
+    # --- web search (Tavily) ------------------------------------------------
+    # Optional: when a key is present the assistant can search the web to answer
+    # general-knowledge or real-time questions it cannot otherwise answer.
+    tavily_api_key: str | None = None
+    web_search_max_results: int = Field(default=5, ge=1, le=20)
+    web_search_depth: str = "advanced"  # "basic" | "advanced"
+    web_search_timeout_seconds: float = 20.0
+    web_search_max_retries: int = Field(default=2, ge=0, le=5)
+
     # --- storage ------------------------------------------------------------
     sqlite_path: Path = Path("./data/agent.db")
 
@@ -84,6 +93,11 @@ class Settings(BaseSettings):
     def auth_enabled(self) -> bool:
         """Authentication is attempted only when credentials are present."""
         return bool(self.erp_username and self.erp_password)
+
+    @property
+    def web_search_enabled(self) -> bool:
+        """Web search is available only when a Tavily API key is configured."""
+        return bool(self.tavily_api_key)
 
     def ensure_dirs(self) -> None:
         """Create any directories the app writes to (e.g. the SQLite folder)."""

@@ -29,13 +29,14 @@ class PlanIntent(str, Enum):
     ``DATA`` questions are answered by executing API steps. ``RECALL`` questions
     are *about the conversation itself* (e.g. "what did I ask before?") and are
     answered from short-term conversation history, not the ERP backend.
-    ``SMALLTALK`` turns are social/meta (greetings, thanks, "what can you do?")
-    and are answered deterministically without the ERP backend or the LLM.
+    ``CHAT`` turns are anything that is not a data lookup (greetings, general
+    questions, chit-chat) and are answered conversationally by the LLM using the
+    chat history, exactly like a general assistant.
     """
 
     DATA = "data"
     RECALL = "recall"
-    SMALLTALK = "smalltalk"
+    CHAT = "chat"
 
 
 class PlanStep(BaseModel):
@@ -75,8 +76,6 @@ class ExecutionPlan(BaseModel):
     intent: PlanIntent = PlanIntent.DATA
     # For RECALL plans: which aspect of history the user asked for.
     recall_topic: str | None = None
-    # For SMALLTALK plans: which social/meta topic was detected.
-    smalltalk_topic: str | None = None
     # Marks plans produced by the rule-based fallback (for observability).
     used_fallback: bool = False
 
@@ -84,7 +83,7 @@ class ExecutionPlan(BaseModel):
     def is_empty(self) -> bool:
         """True when there is nothing to execute *and* nothing else to answer.
 
-        Only ``DATA`` turns can be "empty": ``RECALL`` and ``SMALLTALK`` turns
-        carry their answer in their intent/topic, not in execution steps.
+        Only ``DATA`` turns can be "empty": ``RECALL`` and ``CHAT`` turns carry
+        their answer in their intent, not in execution steps.
         """
         return len(self.steps) == 0 and self.intent is PlanIntent.DATA

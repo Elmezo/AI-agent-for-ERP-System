@@ -58,22 +58,6 @@ def test_recall_question_yields_recall_intent(registry: Registry) -> None:
     assert plan.used_fallback is True
 
 
-def test_greeting_yields_smalltalk_intent(registry: Registry) -> None:
-    plan = FallbackPlanner(registry).plan("hi")
-    assert plan.intent is PlanIntent.SMALLTALK
-    assert plan.smalltalk_topic == "greeting"
-    assert plan.steps == []
-    # SMALLTALK plans have no steps but are NOT "empty" (there is a reply to give).
-    assert plan.is_empty is False
-    assert plan.used_fallback is True
-
-
-def test_capabilities_question_yields_smalltalk_intent(registry: Registry) -> None:
-    plan = FallbackPlanner(registry).plan("what can you do?")
-    assert plan.intent is PlanIntent.SMALLTALK
-    assert plan.smalltalk_topic == "capabilities"
-
-
 def test_manages_detects_manager_concept(registry: Registry) -> None:
     """Regression: "manages" (not just "manager") must trigger the concept step."""
     plan = FallbackPlanner(registry).plan("Who manages the Finance Department?")

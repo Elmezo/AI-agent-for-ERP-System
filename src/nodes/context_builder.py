@@ -16,7 +16,7 @@ from src.graph.dependencies import PipelineDeps
 from src.models.plan import ExecutionPlan, PlanIntent
 from src.models.state import AgentState
 from src.nodes._helpers import append_trace
-from src.nodes.conversation import answer_recall, answer_smalltalk
+from src.nodes.conversation import answer_recall
 from src.observability.logging import get_logger
 
 _log = get_logger("node.context_builder")
@@ -42,11 +42,6 @@ class ContextBuilderNode:
         # ERP results. Build a focus value so the validator marks the turn "ok".
         if plan.intent is PlanIntent.RECALL:
             return self._build_recall_context(state, plan, start)
-
-        # Social/meta small talk (greetings, thanks, capabilities) is answered
-        # deterministically, with capability hints drawn from the registry.
-        if plan.intent is PlanIntent.SMALLTALK:
-            return self._build_smalltalk_context(state, plan, start)
 
         results = state.get("resolved_results") or state.get("execution_results", [])
 
@@ -108,31 +103,6 @@ class ContextBuilderNode:
         return {
             "context": context,
             "trace": append_trace(state, "context_builder", elapsed, f"recall={topic}"),
-        }
-
-    def _build_smalltalk_context(
-        self, state: AgentState, plan: ExecutionPlan, start: float
-    ) -> dict[str, Any]:
-        """Answer a social/meta turn deterministically (no ERP, no LLM)."""
-        language = state.get("language", plan.language)
-        topic = plan.smalltalk_topic or "greeting"
-        capabilities = [f.business_name for f in self._deps.registry.facets.values()]
-        answer = answer_smalltalk(topic, language, capabilities)
-        context = {
-            "goal": plan.goal,
-            "question": state["user_input"],
-            "language": language,
-            # Surface as a focus value so the validator treats the turn as "ok"
-            # and the response generator returns it verbatim (no LLM call).
-            "focus": [{"concept": "smalltalk", "field": topic, "value": answer}],
-            "results": [],
-            "memories": [m.get("content") for m in state.get("retrieved_memories", [])],
-        }
-        elapsed = round((time.perf_counter() - start) * 1000, 2)
-        _log.info("context_built", results=0, focus=1, intent="smalltalk")
-        return {
-            "context": context,
-            "trace": append_trace(state, "context_builder", elapsed, f"smalltalk={topic}"),
         }
 
     def _summarise(self, entry: dict[str, Any], result: dict[str, Any]) -> dict[str, Any] | None:

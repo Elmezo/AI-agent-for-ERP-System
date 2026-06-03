@@ -44,6 +44,7 @@ from src.observability.logging import configure_logging, get_logger
 from src.planner.llm_planner import LLMPlanner
 from src.services.api_client import ApiClient
 from src.services.facet_service import FacetService
+from src.services.web_search_service import WebSearchService
 
 _log = get_logger("graph")
 
@@ -94,6 +95,7 @@ def build_deps(
     llm = OllamaLLM(settings)
     planner = LLMPlanner(registry, llm)
     memory_repo = memory or SqliteMemoryRepository(settings.sqlite_path)
+    web_search = _build_web_search(settings)
     return PipelineDeps(
         settings=settings,
         registry=registry,
@@ -102,6 +104,20 @@ def build_deps(
         planner=planner,
         llm=llm,
         memory=memory_repo,
+        web_search=web_search,
+    )
+
+
+def _build_web_search(settings: Settings) -> WebSearchService | None:
+    """Construct the web-search service when a Tavily key is configured."""
+    if not settings.web_search_enabled or settings.tavily_api_key is None:
+        return None
+    return WebSearchService.from_api_key(
+        settings.tavily_api_key,
+        max_results=settings.web_search_max_results,
+        search_depth=settings.web_search_depth,
+        timeout_seconds=settings.web_search_timeout_seconds,
+        max_retries=settings.web_search_max_retries,
     )
 
 

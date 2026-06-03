@@ -1,9 +1,14 @@
 """Response Generator node.
 
-Produces the final natural-language answer in the user's language. For ``empty``
-/ ``error`` / ``no_plan`` verdicts it uses the validator's deterministic,
-localized message (no LLM, no hallucination risk). For ``ok`` it asks the LLM to
-summarise the compact context, instructed to use only the provided facts.
+Produces the final natural-language answer in the user's language.
+
+Routing by intent/verdict:
+- ``CHAT`` turns (anything that is not a data lookup) are answered
+  conversationally by the LLM using the chat history - like a normal assistant.
+- ``RECALL`` turns return the deterministic answer the context builder computed.
+- ``ok`` data turns ask the LLM to summarise the compact context (facts only).
+- ``empty`` / ``error`` verdicts use the validator's deterministic, localized
+  message (no LLM, no hallucination risk).
 """
 
 from __future__ import annotations
@@ -15,6 +20,7 @@ from typing import Any
 from src.graph.dependencies import PipelineDeps
 from src.models.plan import PlanIntent
 from src.models.state import AgentState
+from src.models.web import WebSearchDecision, WebSearchResult
 from src.nodes._helpers import append_trace
 from src.observability.logging import get_logger
 from src.prompts import render
@@ -36,12 +42,17 @@ class ResponseGeneratorNode:
         status = validation.get("status")
 
         usage: dict[str, int] = {}
-        if status != "ok":
-            answer = validation.get("message") or ""
+        intent = (state.get("plan") or {}).get("intent")
+
+        if intent == PlanIntent.CHAT.value:
+            # Not a data question: respond like a general chat assistant.
+            answer, usage = await self._chat(state, language)
         elif (verbatim := self._deterministic_answer(state)) is not None:
-            # Meta turns (recall/small talk) carry a pre-computed, faithful
-            # answer; return it directly instead of risking LLM paraphrasing.
+            # RECALL turns carry a pre-computed, faithful answer; return it
+            # directly instead of risking LLM paraphrasing.
             answer = verbatim
+        elif status != "ok":
+            answer = validation.get("message") or ""
         else:
             answer, usage = await self._generate(state, language)
 
@@ -58,20 +69,118 @@ class ResponseGeneratorNode:
 
     @staticmethod
     def _deterministic_answer(state: AgentState) -> str | None:
-        """Return a pre-computed answer for non-data turns, else ``None``.
+        """Return a pre-computed answer for ``RECALL`` turns, else ``None``.
 
-        ``RECALL`` and ``SMALLTALK`` turns are answered deterministically by the
-        context builder (stored as the single focus value). Returning it verbatim
-        keeps these meta answers faithful and LLM-independent.
+        ``RECALL`` turns are answered deterministically by the context builder
+        (stored as the single focus value). Returning it verbatim keeps the
+        recall answer faithful and LLM-independent.
         """
         intent = (state.get("plan") or {}).get("intent")
-        if intent not in (PlanIntent.RECALL.value, PlanIntent.SMALLTALK.value):
+        if intent != PlanIntent.RECALL.value:
             return None
         for item in state.get("context", {}).get("focus", []):
             value = item.get("value")
             if value not in (None, ""):
                 return str(value)
         return None
+
+    async def _chat(self, state: AgentState, language: str) -> tuple[str, dict[str, int]]:
+        """Answer a general (non-data) turn conversationally, using chat history.
+
+        Like a browsing assistant: if the question needs current or external
+        knowledge (and web search is enabled), search the web first and ground
+        the reply in the results.
+        """
+        capabilities = ", ".join(
+            f.business_name for f in self._deps.registry.facets.values()
+        ) or "company data"
+        question = state["user_input"]
+
+        web_context, web_usage = await self._maybe_search_web(question, language)
+
+        prompt = render(
+            "chat",
+            language=language,
+            capabilities=capabilities,
+            web_context=web_context,
+        )
+        history = state.get("messages", [])
+        try:
+            text, usage = await self._deps.llm.chat(system=prompt, history=history)
+        except Exception as exc:  # never crash the turn on LLM failure
+            _log.warning("chat_llm_failed", error=str(exc))
+            return self._chat_fallback(language), web_usage
+        merged = {k: web_usage.get(k, 0) + usage.get(k, 0) for k in set(web_usage) | set(usage)}
+        return text.strip() or self._chat_fallback(language), merged
+
+    async def _maybe_search_web(
+        self, question: str, language: str
+    ) -> tuple[str, dict[str, int]]:
+        """Decide whether to search the web and, if so, return a context block.
+
+        Returns ``(web_context, token_usage)`` where ``web_context`` is an empty
+        string when search is disabled, unnecessary, or unsuccessful.
+        """
+        service = self._deps.web_search
+        if service is None:  # web search not configured
+            return "", {}
+
+        decision, usage = await self._decide_web_search(question)
+        if not decision.needs_search:
+            return "", usage
+
+        query = decision.query.strip() or question
+        result = await service.search(query)
+        if not result.ok:
+            _log.info("web_search_no_results", query=query[:120], error=result.error)
+            return "", usage
+        _log.info("web_search_used", query=query[:120], sources=len(result.results))
+        return self._format_web_context(result, language), usage
+
+    async def _decide_web_search(self, question: str) -> tuple[WebSearchDecision, dict[str, int]]:
+        """Ask the LLM (structured) whether this turn needs a web search."""
+        prompt = render("web_decision", question=question)
+        try:
+            decision, usage = await self._deps.llm.structured(
+                system=prompt,
+                user=question,
+                schema=WebSearchDecision,
+                max_repair=1,
+            )
+            return decision, usage
+        except Exception as exc:  # default to no-search on any failure
+            _log.warning("web_decision_failed", error=str(exc))
+            return WebSearchDecision(needs_search=False), {}
+
+    @staticmethod
+    def _format_web_context(result: WebSearchResult, language: str) -> str:
+        """Render search findings into a prompt block the LLM must ground on."""
+        lines = [
+            "## Web search results (use these to answer; cite source URLs)",
+        ]
+        if result.answer:
+            lines.append(f"Summary: {result.answer}")
+        for item in result.results[:5]:
+            snippet = item.content.strip().replace("\n", " ")
+            if len(snippet) > 500:
+                snippet = snippet[:500] + "..."
+            lines.append(f"- {item.title} ({item.url}): {snippet}")
+        instruction = (
+            "اعتمد على نتائج البحث أعلاه في إجابتك واذكر المصادر عند الحاجة."
+            if str(language).startswith("ar")
+            else "Base your answer on the search results above and mention sources where helpful."
+        )
+        lines.append(instruction)
+        return "\n".join(lines)
+
+    @staticmethod
+    def _chat_fallback(language: str) -> str:
+        """Minimal reply when the LLM is unavailable for a chat turn."""
+        is_ar = str(language).startswith("ar")
+        return (
+            "مرحباً! كيف يمكنني مساعدتك؟" if is_ar
+            else "Hello! How can I help you?"
+        )
 
     async def _generate(self, state: AgentState, language: str) -> tuple[str, dict[str, int]]:
         """Call the LLM to summarise the validated context."""

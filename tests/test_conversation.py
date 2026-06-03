@@ -2,21 +2,12 @@
 
 from __future__ import annotations
 
-import pytest
-
 from src.nodes.conversation import (
-    CAPABILITIES,
-    GOODBYE,
-    GREETING,
     HISTORY,
-    HOW_ARE_YOU,
     PREVIOUS_ANSWER,
     PREVIOUS_QUESTION,
-    THANKS,
     answer_recall,
-    answer_smalltalk,
     detect_recall_topic,
-    detect_smalltalk,
 )
 
 # A conversation where the *current* turn (last user message) is the recall
@@ -71,71 +62,3 @@ def test_answer_previous_question_when_no_history() -> None:
     msgs = [{"role": "user", "content": "what was my last question?"}]
     assert answer_recall(msgs, PREVIOUS_QUESTION, "en") == "You haven't asked me anything before this."
     assert answer_recall(msgs, PREVIOUS_QUESTION, "ar") == "لم تسألني أي سؤال قبل هذا."
-
-
-# --- small talk -------------------------------------------------------------
-@pytest.mark.parametrize(
-    ("text", "topic"),
-    [
-        ("hi", GREETING),
-        ("Hello!", GREETING),
-        ("hey there", GREETING),
-        ("good morning", GREETING),
-        ("مرحبا", GREETING),
-        ("السلام عليكم", GREETING),
-        ("thanks", THANKS),
-        ("thank you so much", THANKS),
-        ("شكرا", THANKS),
-        ("bye", GOODBYE),
-        ("goodbye for now", GOODBYE),
-        ("how are you?", HOW_ARE_YOU),
-        ("كيف حالك", HOW_ARE_YOU),
-        ("what can you do?", CAPABILITIES),
-        ("help", CAPABILITIES),
-        ("who are you", CAPABILITIES),
-    ],
-)
-def test_detect_smalltalk_topics(text: str, topic: str) -> None:
-    assert detect_smalltalk(text) == topic
-
-
-@pytest.mark.parametrize(
-    "text",
-    [
-        "Who owns System ABC?",
-        "How many employees are there?",
-        "Hey, who manages the Finance Department?",  # greeting word but a data question
-        "I need help finding the owner of dataset X",  # 'help' inside a real question
-        "",
-    ],
-)
-def test_detect_smalltalk_ignores_data_questions(text: str) -> None:
-    assert detect_smalltalk(text) is None
-
-
-def test_smalltalk_does_not_collide_with_recall() -> None:
-    # Recall phrases must not be swallowed by small-talk detection.
-    assert detect_smalltalk("what did i ask before?") is None
-
-
-def test_answer_smalltalk_greeting_includes_capabilities() -> None:
-    answer = answer_smalltalk(GREETING, "en", capabilities=["People", "Systems"])
-    assert answer.startswith("Hello!")
-    assert "People, Systems" in answer
-
-
-def test_answer_smalltalk_greeting_without_capabilities() -> None:
-    answer = answer_smalltalk(GREETING, "en")
-    assert "Hello!" in answer
-    assert "How can I help you?" in answer
-
-
-def test_answer_smalltalk_arabic_greeting() -> None:
-    answer = answer_smalltalk(GREETING, "ar", capabilities=["الموظفون"])
-    assert answer.startswith("مرحباً")
-    assert "الموظفون" in answer
-
-
-def test_answer_smalltalk_thanks_and_goodbye() -> None:
-    assert "welcome" in answer_smalltalk(THANKS, "en").lower()
-    assert "Goodbye" in answer_smalltalk(GOODBYE, "en")
