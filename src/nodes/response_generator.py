@@ -69,17 +69,18 @@ class ResponseGeneratorNode:
 
     @staticmethod
     def _deterministic_answer(state: AgentState) -> str | None:
-        """Return a pre-computed answer for ``RECALL`` and analytics turns.
+        """Return a pre-computed answer for ``RECALL``, analytics and clarification.
 
-        Both are computed deterministically by the context builder and stored as
-        a focus value. Returning analytic figures verbatim guarantees the numbers
-        are exact (no LLM paraphrasing); recall stays faithful and LLM-free.
+        All are computed deterministically by the context builder and stored as a
+        focus value. Returning them verbatim guarantees exact analytic figures (no
+        LLM paraphrasing), faithful recall, and an unaltered disambiguation list.
         """
         intent = (state.get("plan") or {}).get("intent")
         focus = state.get("context", {}).get("focus", [])
         is_recall = intent == PlanIntent.RECALL.value
         is_analytics = any(item.get("concept") == "analytics" for item in focus)
-        if not (is_recall or is_analytics):
+        is_clarification = any(item.get("concept") == "clarification" for item in focus)
+        if not (is_recall or is_analytics or is_clarification):
             return None
         for item in focus:
             value = item.get("value")

@@ -4,14 +4,15 @@ Wires the dependency container, builds the LangGraph ``StateGraph`` from the nin
 pipeline nodes, and exposes a small :class:`AgentRuntime` async context manager
 that owns the SQLite checkpointer, HTTP client, and memory connection.
 
-The pipeline is linear:
+The pipeline is mostly linear:
 
-    planner -> entity_resolver -> api_selector -> executor ->
-    relationship_resolver -> join -> analytics -> context_builder ->
+    clarification_resolver -> planner -> entity_resolver -> api_selector ->
+    executor -> relationship_resolver -> join -> analytics -> context_builder ->
     response_validator -> response_generator -> memory_manager
 
-Each node degrades gracefully (no exceptions escape into the graph), so a linear
-flow is sufficient and easy to reason about.
+with one branch: if entity resolution is ambiguous, the graph skips execution
+and goes straight to ``context_builder`` to ask the user which entity they meant.
+Each node degrades gracefully (no exceptions escape into the graph).
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from src.memory.sqlite_repository import SqliteMemoryRepository
 from src.models.state import AgentState
 from src.nodes.analytics import AnalyticsNode
 from src.nodes.api_selector import ApiSelectorNode
+from src.nodes.clarification import ClarificationResolverNode
 from src.nodes.context_builder import ContextBuilderNode
 from src.nodes.join import JoinNode
 from src.nodes.entity_resolver import EntityResolverNode
@@ -51,10 +53,18 @@ from src.services.web_search_service import WebSearchService
 _log = get_logger("graph")
 
 
+def _needs_clarification(state: AgentState) -> str:
+    """Route to a clarification question when entity resolution is ambiguous."""
+    if (state.get("clarification") or {}).get("needed"):
+        return "clarify"
+    return "continue"
+
+
 def build_graph(deps: PipelineDeps) -> StateGraph:
     """Construct the (uncompiled) pipeline graph from the node set."""
     graph = StateGraph(AgentState)
 
+    graph.add_node("clarification_resolver", ClarificationResolverNode(deps))
     graph.add_node("planner", PlannerNode(deps))
     graph.add_node("entity_resolver", EntityResolverNode(deps))
     graph.add_node("api_selector", ApiSelectorNode(deps))
@@ -67,9 +77,15 @@ def build_graph(deps: PipelineDeps) -> StateGraph:
     graph.add_node("response_generator", ResponseGeneratorNode(deps))
     graph.add_node("memory_manager", MemoryManagerNode(deps))
 
-    graph.add_edge(START, "planner")
+    graph.add_edge(START, "clarification_resolver")
+    graph.add_edge("clarification_resolver", "planner")
     graph.add_edge("planner", "entity_resolver")
-    graph.add_edge("entity_resolver", "api_selector")
+    # Ambiguous entity -> skip execution and ask the user; else continue.
+    graph.add_conditional_edges(
+        "entity_resolver",
+        _needs_clarification,
+        {"clarify": "context_builder", "continue": "api_selector"},
+    )
     graph.add_edge("api_selector", "executor")
     graph.add_edge("executor", "relationship_resolver")
     graph.add_edge("relationship_resolver", "join")

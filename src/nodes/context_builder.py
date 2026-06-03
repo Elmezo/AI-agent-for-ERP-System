@@ -17,6 +17,7 @@ from src.models.analytics import AnalyticsResult
 from src.models.plan import ExecutionPlan, PlanIntent
 from src.models.state import AgentState
 from src.nodes._helpers import append_trace
+from src.nodes.clarification import format_clarification
 from src.nodes.conversation import answer_recall
 from src.observability.logging import get_logger
 
@@ -45,6 +46,12 @@ class ContextBuilderNode:
         """Assemble trimmed results + focus values into ``context``."""
         plan = ExecutionPlan(**state["plan"])
         start = time.perf_counter()
+
+        # Ambiguous entity: ask the user to choose instead of answering. The
+        # graph routes here directly, skipping execution.
+        clarification = state.get("clarification") or {}
+        if clarification.get("needed"):
+            return self._build_clarification_context(state, plan, clarification, start)
 
         # Conversational/meta turns are answered from short-term history, not the
         # ERP results. Build a focus value so the validator marks the turn "ok".
@@ -115,6 +122,33 @@ class ContextBuilderNode:
             if step.aggregate is not None:
                 consumed.update(step.depends_on)
         return consumed
+
+    def _build_clarification_context(
+        self,
+        state: AgentState,
+        plan: ExecutionPlan,
+        clarification: dict[str, Any],
+        start: float,
+    ) -> dict[str, Any]:
+        """Render the disambiguation question as a deterministic focus value."""
+        language = state.get("language", plan.language)
+        answer = format_clarification(clarification, language)
+        context = {
+            "goal": plan.goal,
+            "question": state["user_input"],
+            "language": language,
+            # Surfaced as a focus value: validator marks the turn "ok" and the
+            # response generator returns the question verbatim (no paraphrasing).
+            "focus": [{"concept": "clarification", "field": "options", "value": answer}],
+            "results": [],
+            "memories": [m.get("content") for m in state.get("retrieved_memories", [])],
+        }
+        elapsed = round((time.perf_counter() - start) * 1000, 2)
+        _log.info("context_built", results=0, focus=1, intent="clarification")
+        return {
+            "context": context,
+            "trace": append_trace(state, "context_builder", elapsed, "clarification"),
+        }
 
     def _build_recall_context(
         self, state: AgentState, plan: ExecutionPlan, start: float

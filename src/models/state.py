@@ -60,6 +60,12 @@ class AgentState(TypedDict, total=False):
     # step_id -> {"facet": str, "id": Any, "label": str, "record": dict}
     resolved_entities: dict[str, Any]
 
+    # --- clarification (ambiguous entity disambiguation) -------------------
+    # {"needed": bool, "facet": str, "query": str, "original_question": str,
+    #  "candidates": [{"id": Any, "label": str, "hint": str}]}
+    # Persisted across turns so the next turn can resolve the user's choice.
+    clarification: dict[str, Any]
+
     # --- api selection ------------------------------------------------------
     selected_apis: list[dict[str, Any]]
 
