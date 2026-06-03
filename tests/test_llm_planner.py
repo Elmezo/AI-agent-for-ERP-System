@@ -76,3 +76,16 @@ async def test_recall_skips_llm(registry: Registry) -> None:
     plan, _ = await LLMPlanner(registry, llm).plan("what was my last question?")
     assert plan.intent is PlanIntent.RECALL
     assert llm.calls == 0  # deterministic path never touches the model
+
+
+async def test_explanation_followup_routes_to_recall(registry: Registry) -> None:
+    """"How did you calculate that?" is a meta turn answered from history.
+
+    Regression guard: it must NOT become a chat turn (which previously triggered
+    an unrelated web search and hallucinated business data).
+    """
+    llm = _FakeLLM(ExecutionPlan(goal="", steps=[], intent=PlanIntent.CHAT))
+    plan, _ = await LLMPlanner(registry, llm).plan("حسبتها ازاي")
+    assert plan.intent is PlanIntent.RECALL
+    assert plan.steps == []
+    assert llm.calls == 0

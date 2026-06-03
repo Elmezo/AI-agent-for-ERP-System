@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from src.nodes.conversation import (
+    EXPLANATION,
     HISTORY,
     PREVIOUS_ANSWER,
     PREVIOUS_QUESTION,
@@ -36,9 +37,20 @@ def test_detect_history_topic() -> None:
     assert detect_recall_topic("what did we talk about?") == HISTORY
 
 
+def test_detect_explanation_topic() -> None:
+    # The exact follow-up that previously triggered a web search + hallucination.
+    assert detect_recall_topic("حسبتها ازاي") == EXPLANATION
+    assert detect_recall_topic("كيف حسبت هذا الرقم؟") == EXPLANATION
+    assert detect_recall_topic("How did you calculate that?") == EXPLANATION
+    assert detect_recall_topic("where did you get that number") == EXPLANATION
+
+
 def test_non_recall_returns_none() -> None:
     assert detect_recall_topic("Who owns System ABC?") is None
     assert detect_recall_topic("How many employees are there?") is None
+    # Bare "explain"/"why" must stay a normal (data) question, not recall.
+    assert detect_recall_topic("explain the ERP Modernization project") is None
+    assert detect_recall_topic("ما متوسط ميزانية المشاريع؟") is None
 
 
 def test_answer_previous_question_excludes_current_turn() -> None:
@@ -50,6 +62,18 @@ def test_answer_previous_question_excludes_current_turn() -> None:
 def test_answer_previous_answer() -> None:
     answer = answer_recall(_HISTORY_MESSAGES, PREVIOUS_ANSWER, "en")
     assert "Ahmed Mohamed" in answer
+
+
+def test_answer_explanation_restates_prior_answer_without_inventing() -> None:
+    msgs = [
+        {"role": "user", "content": "ما متوسط ميزانية المشاريع؟"},
+        {"role": "assistant", "content": "متوسط budget: 186,666.67"},
+        {"role": "user", "content": "حسبتها ازاي"},
+    ]
+    answer = answer_recall(msgs, EXPLANATION, "ar")
+    # Restates the real, previously-computed figure and its source; no fabrication.
+    assert "186,666.67" in answer
+    assert "النظام" in answer
 
 
 def test_answer_history_lists_prior_questions() -> None:

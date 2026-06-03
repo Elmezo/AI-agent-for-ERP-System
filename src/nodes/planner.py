@@ -39,7 +39,14 @@ class PlannerNode:
             fallback=plan.used_fallback,
             language=plan.language,
         )
-        # Planner runs first each turn, so it RESETS the per-turn trace + errors.
+        # Planner runs first each turn (after the clarification resolver), so it
+        # RESETS all per-turn derived state. The graph is checkpointed per
+        # thread, so anything left in the state from the previous turn persists
+        # unless explicitly cleared. Without this, e.g. an ``analytics`` result
+        # from a prior question would still be present and the context builder
+        # would surface it for an unrelated follow-up. ``clarification`` is the
+        # one cross-turn field and is intentionally NOT reset here - it is
+        # consumed/cleared by the clarification resolver that runs before us.
         detail = (
             f"steps={len(plan.steps)} fallback={plan.used_fallback} "
             f"tokens={usage.get('completion', 0)}"
@@ -51,6 +58,14 @@ class PlannerNode:
             "messages": [{"role": "user", "content": question}],
             "errors": [],
             "trace": [{"stage": "planner", "elapsed_ms": elapsed, "detail": detail}],
+            # Clear derived results from any previous turn (stale-state guard).
+            "resolved_entities": {},
+            "selected_apis": [],
+            "execution_results": [],
+            "resolved_results": [],
+            "analytics": [],
+            "context": {},
+            "validation": {},
         }
 
     async def _retrieve_memories(self, thread_id: str, question: str) -> list[dict[str, Any]]:

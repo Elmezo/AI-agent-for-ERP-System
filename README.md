@@ -6,6 +6,8 @@ No frontend. The LLM runs locally via [Ollama](https://ollama.com). Optional [Ta
 
 **Repository:** https://github.com/Elmezo/AI-agent-for-ERP-System
 
+For a full Arabic guide to project structure and which file to edit for each change, see **[PROJECT_GUIDE.md](PROJECT_GUIDE.md)**.
+
 ---
 
 ## Tech stack

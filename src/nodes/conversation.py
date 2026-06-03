@@ -20,10 +20,34 @@ from typing import Any
 PREVIOUS_QUESTION = "previous_question"
 PREVIOUS_ANSWER = "previous_answer"
 HISTORY = "history"
+EXPLANATION = "explanation"
 
 # Trigger phrases per topic (English + Arabic). Checked as case-insensitive
 # substrings. Order of evaluation matters: more specific topics first.
 _TRIGGERS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        # "How did you calculate / where did you get this?" - a follow-up about
+        # the *previous* answer. Handled from history so the agent restates its
+        # already-computed figure and its source, instead of guessing a
+        # derivation or (as observed) inventing fake records. Phrases are kept
+        # specific to a prior result; bare "explain"/"why" are intentionally
+        # excluded because they are often legitimate new data questions.
+        EXPLANATION,
+        (
+            "how did you calculate", "how did you compute", "how did you get",
+            "how did you arrive", "how did you reach", "how did you work",
+            "how do you know that", "how was that calculated",
+            "how is that calculated", "how was it calculated",
+            "how is it calculated", "where did you get that",
+            "where did that come from", "show your work",
+            "show me the calculation", "how was this computed",
+            "حسبتها", "حسبتها ازاي", "حسبتها إزاي", "ازاي حسبت", "إزاي حسبت",
+            "ازاي حسبتها", "إزاي حسبتها", "كيف حسبت", "كيف حسبتها", "كيف توصلت",
+            "كيف حصلت", "كيف طلعت", "كيف جبت", "منين جبت", "ازاي طلعت",
+            "ازاي عرفت", "كيف عرفت", "طريقة الحساب", "كيف تم الحساب",
+            "كيف تم حسابها", "من اين اتيت", "من أين أتيت",
+        ),
+    ),
     (
         PREVIOUS_ANSWER,
         (
@@ -113,6 +137,25 @@ def answer_recall(
         return (
             f"إجابتي السابقة كانت: «{last}»" if is_ar
             else f'My previous answer was: "{last}"'
+        )
+
+    if topic == EXPLANATION:
+        if not assistant_answers:
+            return (
+                "لم أقدّم أي إجابة بعد لأشرح كيفية حسابها." if is_ar
+                else "I haven't given any answer yet to explain."
+            )
+        last = assistant_answers[-1]
+        # Faithful, source-anchored explanation: the figure is computed directly
+        # from the system's records. We never fabricate the underlying numbers.
+        return (
+            "حسبتُ ذلك مباشرةً من السجلات الفعلية في النظام، دون افتراض أو "
+            f"تأليف أي أرقام. النتيجة التي توصّلت إليها كانت: «{last}»" if is_ar
+            else (
+                "I computed that directly from the actual records in the system "
+                "- not from any assumed or made-up numbers. The result I gave "
+                f'was: "{last}"'
+            )
         )
 
     # HISTORY (and any unknown topic) -> recent questions list.
