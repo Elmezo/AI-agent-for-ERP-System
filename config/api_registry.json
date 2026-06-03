@@ -92,5 +92,25 @@
     "method": "GET",
     "facet": "datasets",
     "description": "List all datasets."
+  },
+  "projects.search": {
+    "url": "/api/projects/search",
+    "method": "GET",
+    "query_params": ["q"],
+    "facet": "projects",
+    "description": "Search projects by name or status."
+  },
+  "projects.get_by_id": {
+    "url": "/api/projects/{id}",
+    "method": "GET",
+    "path_params": ["id"],
+    "facet": "projects",
+    "description": "Get a single project by id (includes budget, spent, status, ownerId, orgUnitId)."
+  },
+  "projects.list": {
+    "url": "/api/projects",
+    "method": "GET",
+    "facet": "projects",
+    "description": "List all projects. Each has numeric budget and spent, a status, an owner (ownerId) and an org unit (orgUnitId)."
   }
 }

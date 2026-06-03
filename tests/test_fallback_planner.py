@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from src.config.registry import Registry
-from src.models.plan import PlanIntent, StepKind
+from src.models.plan import AggregateOp, FilterOp, PlanIntent, StepKind
 from src.planner.fallback_planner import FallbackPlanner, detect_language
+
+
+def _aggregate_step(plan):
+    return next((s for s in plan.steps if s.kind is StepKind.AGGREGATE), None)
 
 
 def test_detect_language() -> None:
@@ -64,3 +68,47 @@ def test_manages_detects_manager_concept(registry: Registry) -> None:
     concept = next((s for s in plan.steps if s.kind == StepKind.CONCEPT), None)
     assert concept is not None
     assert concept.action == "manager"
+
+
+# --- analytics fallback (LLM-free) -----------------------------------------
+def test_average_budget_builds_avg_aggregate(registry: Registry) -> None:
+    plan = FallbackPlanner(registry).plan("What is the average project budget?")
+    assert [s.kind for s in plan.steps] == [StepKind.LIST, StepKind.AGGREGATE]
+    spec = _aggregate_step(plan).aggregate
+    assert spec.op is AggregateOp.AVG and spec.metric == "budget"
+
+
+def test_top_n_projects_by_budget(registry: Registry) -> None:
+    plan = FallbackPlanner(registry).plan("Top 5 projects by budget")
+    spec = _aggregate_step(plan).aggregate
+    assert spec.metric == "budget" and spec.limit == 5 and spec.sort_desc is True
+
+
+def test_count_active_projects_filter(registry: Registry) -> None:
+    plan = FallbackPlanner(registry).plan("How many projects are active?")
+    spec = _aggregate_step(plan).aggregate
+    assert spec.op is AggregateOp.COUNT
+    assert any(f.field == "status" and f.value == "Active" for f in spec.filters)
+
+
+def test_datasets_belong_to_finance_filter(registry: Registry) -> None:
+    plan = FallbackPlanner(registry).plan("How many datasets belong to Finance?")
+    spec = _aggregate_step(plan).aggregate
+    assert spec.op is AggregateOp.COUNT
+    assert any(
+        f.field == "orgUnit" and f.op is FilterOp.CONTAINS and "Finance" in str(f.value)
+        for f in spec.filters
+    )
+
+
+def test_projects_grouped_by_owner(registry: Registry) -> None:
+    plan = FallbackPlanner(registry).plan("Show projects grouped by owner")
+    spec = _aggregate_step(plan).aggregate
+    assert spec.group_by == "owner"
+
+
+def test_plain_count_stays_list_not_aggregate(registry: Registry) -> None:
+    """A bare 'how many projects' is just a list count, not an aggregate step."""
+    plan = FallbackPlanner(registry).plan("How many projects are there?")
+    assert _aggregate_step(plan) is None
+    assert plan.steps[0].kind is StepKind.LIST

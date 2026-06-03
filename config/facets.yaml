@@ -48,3 +48,14 @@ datasets:
   relationships:
     createdBy: { target: people, as_name: createdByName }
     orgUnitId: { target: org_units, as_name: orgUnit }
+
+projects:
+  business_name: Projects
+  primary_key: id
+  display_fields: [name]
+  search_api: projects.search
+  get_by_id_api: projects.get_by_id
+  list_api: projects.list
+  relationships:
+    ownerId: { target: people, as_name: owner }
+    orgUnitId: { target: org_units, as_name: orgUnit }

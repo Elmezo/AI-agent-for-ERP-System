@@ -33,6 +33,7 @@ def _load_all() -> dict[str, Any]:
         "org_units": _load("org_units.json"),
         "systems": _load("systems.json"),
         "datasets": _load("datasets.json"),
+        "projects": _load("projects.json"),
         "stakeholders": _load("stakeholders.json"),
         "interfaces": _load("interfaces.json"),
     }
@@ -209,6 +210,28 @@ async def get_dataset(id: int) -> dict[str, Any]:
     record = _by_id(DB["datasets"], id)
     if record is None:
         raise HTTPException(status_code=404, detail="dataset not found")
+    return record
+
+
+# --- Projects --------------------------------------------------------------
+@app.get("/api/projects")
+async def list_projects() -> list[dict[str, Any]]:
+    """List all projects (with budget, spent, status, owner, org unit)."""
+    return DB["projects"]
+
+
+@app.get("/api/projects/search")
+async def search_projects(q: str = Query(...)) -> list[dict[str, Any]]:
+    """Search projects by name or status."""
+    return _search(DB["projects"], q, ("name", "status"))
+
+
+@app.get("/api/projects/{id}")
+async def get_project(id: int) -> dict[str, Any]:
+    """Get a single project by id."""
+    record = _by_id(DB["projects"], id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="project not found")
     return record
 
 

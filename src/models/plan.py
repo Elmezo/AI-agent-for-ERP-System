@@ -21,6 +21,59 @@ class StepKind(str, Enum):
     LIST = "list"              # list all records of a facet
     API = "api"                # call an explicit registry endpoint
     CONCEPT = "concept"        # resolve a business concept (semantic catalog)
+    AGGREGATE = "aggregate"    # compute analytics over a prior list step's rows
+
+
+class AggregateOp(str, Enum):
+    """Supported analytics operations over a set of records."""
+
+    COUNT = "count"  # number of (filtered) rows; ignores ``metric``
+    SUM = "sum"      # total of ``metric`` across rows
+    AVG = "avg"      # mean of ``metric``
+    MIN = "min"      # smallest ``metric``
+    MAX = "max"      # largest ``metric``
+
+
+class FilterOp(str, Enum):
+    """Comparison operators for filtering rows before aggregation."""
+
+    EQ = "eq"            # equal (string-insensitive for text)
+    NE = "ne"            # not equal
+    GT = "gt"            # greater than (numeric)
+    GTE = "gte"          # greater than or equal (numeric)
+    LT = "lt"            # less than (numeric)
+    LTE = "lte"          # less than or equal (numeric)
+    CONTAINS = "contains"  # case-insensitive substring match (text)
+
+
+class FilterClause(BaseModel):
+    """One ``field <op> value`` predicate applied before aggregating."""
+
+    field: str
+    op: FilterOp = FilterOp.EQ
+    value: Any = None
+
+
+class AggregateSpec(BaseModel):
+    """A declarative analytics request evaluated in memory over list rows.
+
+    Examples:
+        * count active projects -> ``op=count, filters=[status eq Active]``
+        * average project budget -> ``op=avg, metric=budget``
+        * top 5 projects by budget -> ``op=max, metric=budget, limit=5``
+        * projects grouped by owner -> ``op=count, group_by=owner``
+        * total budget per department -> ``op=sum, metric=budget, group_by=orgUnit``
+    """
+
+    op: AggregateOp = AggregateOp.COUNT
+    # Numeric field for sum/avg/min/max (and the ranking key for top-N).
+    metric: str | None = None
+    # Field to group rows by; when set the result is one value per group.
+    group_by: str | None = None
+    filters: list[FilterClause] = Field(default_factory=list)
+    # For ranked/grouped output: sort descending and keep the first ``limit``.
+    sort_desc: bool = True
+    limit: int | None = None
 
 
 class PlanIntent(str, Enum):
@@ -63,6 +116,9 @@ class PlanStep(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
     depends_on: list[int] = Field(default_factory=list)
     description: str = ""
+    # Present only for ``aggregate`` steps: the analytics to compute over the
+    # rows produced by the list step(s) in ``depends_on`` (or the same facet).
+    aggregate: AggregateSpec | None = None
 
 
 class ExecutionPlan(BaseModel):

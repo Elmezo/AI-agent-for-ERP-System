@@ -13,6 +13,7 @@ import time
 from typing import Any
 
 from src.graph.dependencies import PipelineDeps
+from src.models.analytics import AnalyticsResult
 from src.models.plan import ExecutionPlan, PlanIntent
 from src.models.state import AgentState
 from src.nodes._helpers import append_trace
@@ -25,6 +26,13 @@ _MAX_ITEMS = 25
 # Fields worth showing even when not display fields; everything scalar is kept
 # unless it is a raw FK that already has a resolved name.
 _NOISY_FIELDS = {"password", "secret", "token"}
+
+
+def _fmt_num(value: float) -> str:
+    """Format a number readably: integers without decimals, both with separators."""
+    if value == int(value):
+        return f"{int(value):,}"
+    return f"{round(value, 2):,}"
 
 
 class ContextBuilderNode:
@@ -42,6 +50,11 @@ class ContextBuilderNode:
         # ERP results. Build a focus value so the validator marks the turn "ok".
         if plan.intent is PlanIntent.RECALL:
             return self._build_recall_context(state, plan, start)
+
+        # Analytics ("SQL mode") turns: surface the computed answer deterministically.
+        analytics = state.get("analytics") or []
+        if analytics:
+            return self._build_analytics_context(state, plan, analytics, start)
 
         results = state.get("resolved_results") or state.get("execution_results", [])
 
@@ -104,6 +117,94 @@ class ContextBuilderNode:
             "context": context,
             "trace": append_trace(state, "context_builder", elapsed, f"recall={topic}"),
         }
+
+    def _build_analytics_context(
+        self,
+        state: AgentState,
+        plan: ExecutionPlan,
+        analytics: list[dict[str, Any]],
+        start: float,
+    ) -> dict[str, Any]:
+        """Turn computed analytics into a deterministic, readable answer.
+
+        The formatted answer is surfaced as a focus value so the validator marks
+        the turn "ok" and the response generator returns the exact numbers
+        verbatim (no LLM paraphrasing of figures).
+        """
+        language = state.get("language", plan.language)
+        results = [AnalyticsResult(**r) for r in analytics]
+        answer = "\n\n".join(self._format_analytics(r, language) for r in results)
+        context = {
+            "goal": plan.goal,
+            "question": state["user_input"],
+            "language": language,
+            "focus": [{"concept": "analytics", "field": "result", "value": answer}],
+            "analytics": analytics,
+            "results": [],
+            "memories": [m.get("content") for m in state.get("retrieved_memories", [])],
+        }
+        elapsed = round((time.perf_counter() - start) * 1000, 2)
+        _log.info("context_built", results=0, focus=1, intent="analytics")
+        return {
+            "context": context,
+            "trace": append_trace(state, "context_builder", elapsed, f"analytics={len(results)}"),
+        }
+
+    # --- analytics formatting ----------------------------------------------
+    def _format_analytics(self, result: AnalyticsResult, language: str) -> str:
+        """Render one analytics result as a localized, human-readable answer."""
+        is_ar = str(language).startswith("ar")
+        business = self._facet_label(result.facet)
+
+        if result.error:
+            return (
+                f"تعذّر حساب ذلك: {result.error}." if is_ar
+                else f"I couldn't compute that: {result.error}."
+            )
+
+        if result.groups:
+            return self._format_groups(result, business, is_ar)
+
+        if result.op == "count":
+            label = "العدد" if is_ar else business
+        else:
+            label = self._metric_label(result, is_ar)
+        value = _fmt_num(result.value) if result.value is not None else ("لا يوجد" if is_ar else "n/a")
+        return f"{label}: {value}"
+
+    def _format_groups(self, result: AnalyticsResult, business: str, is_ar: bool) -> str:
+        """Render grouped or top-N results as a titled list."""
+        if result.group_by:
+            header = (
+                f"{business} حسب {result.group_by}:" if is_ar
+                else f"{business} by {result.group_by}:"
+            )
+        else:
+            n = len(result.groups)
+            header = (
+                f"أعلى {n} {business} حسب {result.metric}:" if is_ar
+                else f"Top {n} {business} by {result.metric}:"
+            )
+        lines = [f"- {g.key}: {_fmt_num(g.value)}" for g in result.groups]
+        return "\n".join([header, *lines])
+
+    def _metric_label(self, result: AnalyticsResult, is_ar: bool) -> str:
+        """Build the scalar-answer label (e.g. 'Average budget')."""
+        op, metric = result.op, result.metric or ""
+        labels_ar = {
+            "count": "العدد", "sum": f"إجمالي {metric}", "avg": f"متوسط {metric}",
+            "min": f"أدنى {metric}", "max": f"أعلى {metric}",
+        }
+        labels_en = {
+            "count": "Count", "sum": f"Total {metric}", "avg": f"Average {metric}",
+            "min": f"Minimum {metric}", "max": f"Maximum {metric}",
+        }
+        return (labels_ar if is_ar else labels_en).get(op, op)
+
+    def _facet_label(self, facet: str) -> str:
+        """Human-friendly facet name from the registry, falling back to the key."""
+        facet_def = self._deps.registry.get_facet(facet)
+        return facet_def.business_name if facet_def else facet
 
     def _summarise(self, entry: dict[str, Any], result: dict[str, Any]) -> dict[str, Any] | None:
         """Trim one API result into a compact summary block."""

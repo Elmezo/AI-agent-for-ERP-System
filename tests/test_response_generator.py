@@ -191,6 +191,24 @@ async def test_chat_no_decision_call_when_web_search_disabled() -> None:
     deps.llm.structured.assert_not_awaited()
 
 
+async def test_analytics_answer_returned_verbatim() -> None:
+    """Analytic figures are returned exactly as computed, never via the LLM."""
+    deps = _chat_deps("LLM SHOULD NOT BE CALLED")
+    node = ResponseGeneratorNode(deps)
+    state = {
+        "user_input": "average project budget",
+        "language": "en",
+        "plan": {"intent": PlanIntent.DATA.value},
+        "validation": {"status": "ok", "message": ""},
+        "messages": [{"role": "user", "content": "average project budget"}],
+        "context": {"focus": [{"concept": "analytics", "field": "result", "value": "Average budget: 180,000"}]},
+    }
+    out = await node(state)
+    assert out["final_response"] == "Average budget: 180,000"
+    deps.llm.chat.assert_not_awaited()
+    deps.llm.structured.assert_not_awaited()
+
+
 async def test_chat_continues_when_web_search_fails() -> None:
     """If the search errors, the assistant still replies (without web context)."""
     web_search = SimpleNamespace(

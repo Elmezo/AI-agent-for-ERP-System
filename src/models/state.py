@@ -71,6 +71,10 @@ class AgentState(TypedDict, total=False):
     # --- relationship resolution -------------------------------------------
     resolved_results: list[dict[str, Any]]
 
+    # --- analytics ("SQL mode") --------------------------------------------
+    # list[AnalyticsResult.model_dump()] computed from aggregate steps.
+    analytics: list[dict[str, Any]]
+
     # --- context building ---------------------------------------------------
     context: dict[str, Any]
 
