@@ -26,6 +26,12 @@ org_units:
       field: parentId
       target: org_units
       description: The parent organizational unit.
+    members:
+      reverse_facet: people
+      reverse_field: orgUnitId
+      description: >-
+        The employees who belong to this unit (the people whose orgUnitId points
+        back at this org unit). Answer by joining people to the unit on orgUnitId.
 
 systems:
   business_name: Systems

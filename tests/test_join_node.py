@@ -108,3 +108,65 @@ async def test_join_node_noop_without_join_steps() -> None:
     plan = ExecutionPlan(goal="x", steps=[PlanStep(id=1, kind=StepKind.LIST, facet="projects")])
     out = await node({"plan": plan.model_dump(mode="json"), "resolved_results": []})
     assert out == {}
+
+
+# --- people belonging to an org unit (the child-of-parent path) -------------
+def _org_unit_entry() -> dict:
+    return {"step_id": 2, "kind": "get_by_id", "facet": "org_units",
+            "result": {"status": "success", "data": {"id": 2, "name": "Finance Department"}}}
+
+
+def _people_entry() -> dict:
+    rows = [
+        {"id": 1, "name": "Ahmed Mohamed", "orgUnitId": 3},
+        {"id": 2, "name": "Sara Ali", "orgUnitId": 2},
+        {"id": 4, "name": "Layla Ibrahim", "orgUnitId": 2},
+        {"id": 7, "name": "Youssef Nabil", "orgUnitId": 2},
+        {"id": 8, "name": "Ahmed Ali", "orgUnitId": 2},
+        {"id": 9, "name": "Ahmed Hassan", "orgUnitId": 3},
+    ]
+    return {"step_id": 3, "kind": "list", "facet": "people",
+            "result": {"status": "success", "data": rows}}
+
+
+def _members_plan(with_count: bool = False) -> ExecutionPlan:
+    steps = [
+        PlanStep(id=2, kind=StepKind.GET_BY_ID, facet="org_units", depends_on=[1]),
+        PlanStep(id=3, kind=StepKind.LIST, facet="people"),
+        PlanStep(
+            id=4, kind=StepKind.JOIN, facet="people", depends_on=[2, 3],
+            join=JoinSpec(left_step=2, left_key="id", right_step=3, right_key="orgUnitId"),
+        ),
+    ]
+    if with_count:
+        steps.append(
+            PlanStep(id=5, kind=StepKind.AGGREGATE, facet="people", depends_on=[4],
+                     aggregate=AggregateSpec(op=AggregateOp.COUNT))
+        )
+    return ExecutionPlan(goal="people in finance", steps=steps)
+
+
+async def test_join_lists_only_the_units_members() -> None:
+    node = JoinNode(_deps())
+    state = {
+        "plan": _members_plan().model_dump(mode="json"),
+        "resolved_results": [_org_unit_entry(), _people_entry()],
+    }
+    out = await node(state)
+    join_entry = next(e for e in out["resolved_results"] if e["step_id"] == 4)
+    names = [r["name"] for r in join_entry["result"]["data"]]
+    assert names == ["Sara Ali", "Layla Ibrahim", "Youssef Nabil", "Ahmed Ali"]
+    assert join_entry["facet"] == "people"
+
+
+async def test_count_of_unit_members_is_four() -> None:
+    """Regression for the '9 instead of 4' bug: counting must respect the unit."""
+    deps = _deps()
+    state = {
+        "plan": _members_plan(with_count=True).model_dump(mode="json"),
+        "resolved_results": [_org_unit_entry(), _people_entry()],
+    }
+    join_out = await JoinNode(deps)(state)
+    state["resolved_results"] = join_out["resolved_results"]
+    analytics_out = await AnalyticsNode(deps)(state)
+    assert analytics_out["analytics"][0]["value"] == 4.0

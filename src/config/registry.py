@@ -94,6 +94,8 @@ def load_semantic_catalog(path: Path) -> SemanticCatalog:
                 field=cspec.get("field"),
                 api=cspec.get("api"),
                 target=cspec.get("target"),
+                reverse_facet=cspec.get("reverse_facet"),
+                reverse_field=cspec.get("reverse_field"),
                 description=cspec.get("description", ""),
             )
         facets[facet_name] = FacetSemantics(

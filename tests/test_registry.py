@@ -34,6 +34,19 @@ def test_semantic_catalog(registry: Registry) -> None:
     assert systems.find_concept("responsible") is not None
 
 
+def test_reverse_members_concept(registry: Registry) -> None:
+    """org_units.members is a reverse link to people via orgUnitId."""
+    org_units = registry.semantic.get("org_units")
+    assert org_units is not None
+    members = org_units.find_concept("members")
+    assert members is not None
+    assert members.is_reverse is True
+    assert members.reverse_facet == "people"
+    assert members.reverse_field == "orgUnitId"
+    # And it is discoverable by the child facet it points back from.
+    assert org_units.reverse_concept("people") is members
+
+
 def test_catalog_summary_mentions_facets(registry: Registry) -> None:
     summary = registry.catalog_summary()
     for facet in ("people", "systems", "datasets", "org_units"):

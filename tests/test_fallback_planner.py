@@ -114,6 +114,51 @@ def test_plain_count_stays_list_not_aggregate(registry: Registry) -> None:
     assert plan.steps[0].kind is StepKind.LIST
 
 
+# --- child-of-parent (people in an org unit) fallback ----------------------
+def test_people_in_org_unit_by_id_builds_join(registry: Registry) -> None:
+    """'names of the people in org unit 2' -> search+get_by_id+list+join, no count."""
+    plan = FallbackPlanner(registry).plan("What are the names of the people in org unit 2?")
+    kinds = [s.kind for s in plan.steps]
+    assert kinds == [StepKind.SEARCH, StepKind.GET_BY_ID, StepKind.LIST, StepKind.JOIN]
+    assert plan.steps[0].facet == "org_units"
+    assert plan.steps[0].query == "2"  # resolved by id, not fuzzy text
+    assert plan.steps[2].facet == "people"
+    join = plan.steps[-1].join
+    assert join is not None
+    assert join.left_step == 2 and join.left_key == "id"
+    assert join.right_step == 3 and join.right_key == "orgUnitId"
+    assert join.emit == "right"
+
+
+def test_count_people_in_org_unit_adds_count_aggregate(registry: Registry) -> None:
+    """'how many people in orgunit number 2' -> the join plus a count aggregate."""
+    plan = FallbackPlanner(registry).plan("How number of people in orgunit number 2?")
+    kinds = [s.kind for s in plan.steps]
+    assert kinds == [
+        StepKind.SEARCH, StepKind.GET_BY_ID, StepKind.LIST, StepKind.JOIN, StepKind.AGGREGATE,
+    ]
+    assert plan.steps[0].query == "2"
+    agg = plan.steps[-1]
+    assert agg.depends_on == [4]
+    assert agg.aggregate is not None and agg.aggregate.op is AggregateOp.COUNT
+
+
+def test_employees_of_named_department_builds_join(registry: Registry) -> None:
+    plan = FallbackPlanner(registry).plan("List the members of the Finance Department")
+    kinds = [s.kind for s in plan.steps]
+    assert kinds[:4] == [StepKind.SEARCH, StepKind.GET_BY_ID, StepKind.LIST, StepKind.JOIN]
+    assert plan.steps[0].facet == "org_units"
+    assert "Finance" in (plan.steps[0].query or "")
+
+
+def test_who_manages_is_not_misread_as_members(registry: Registry) -> None:
+    """Regression: a manager-concept question must NOT trigger the members join."""
+    plan = FallbackPlanner(registry).plan("Who manages the Finance Department?")
+    assert StepKind.JOIN not in [s.kind for s in plan.steps]
+    concept = next((s for s in plan.steps if s.kind == StepKind.CONCEPT), None)
+    assert concept is not None and concept.action == "manager"
+
+
 # --- cross-entity join fallback --------------------------------------------
 def test_join_chain_for_crm_owner_projects(registry: Registry) -> None:
     plan = FallbackPlanner(registry).plan(

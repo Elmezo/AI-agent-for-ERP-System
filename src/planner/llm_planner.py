@@ -111,7 +111,17 @@ class LLMPlanner:
         lines: list[str] = []
         for facet_name, semantics in self._registry.semantic.facets.items():
             for cname, concept in semantics.concepts.items():
-                target = f" -> {concept.target}" if concept.target else ""
-                via = f"field={concept.field}" if concept.field else f"api={concept.api}"
+                if concept.is_reverse:
+                    via = (
+                        f"reverse: {concept.reverse_facet}.{concept.reverse_field} "
+                        f"-> join on this unit's id (use search+get_by_id+list+join)"
+                    )
+                    target = ""
+                elif concept.field:
+                    via = f"field={concept.field}"
+                    target = f" -> {concept.target}" if concept.target else ""
+                else:
+                    via = f"api={concept.api}"
+                    target = f" -> {concept.target}" if concept.target else ""
                 lines.append(f"- {facet_name}.{cname} ({via}{target}): {concept.description}")
         return "\n".join(lines) if lines else "(none)"

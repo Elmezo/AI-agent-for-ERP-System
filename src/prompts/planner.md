@@ -106,6 +106,36 @@ Notes:
   filters=[orgUnit contains "Finance"].
 - For "projects grouped by owner": op="count", group_by="owner".
 
+## Child-of-parent rules (members of a unit, items belonging to a parent)
+A question like "who/how many people are in org unit N" or "employees of the
+Finance department" asks for the CHILD records (people) that point back at a
+PARENT (an org unit) through a foreign key (people.orgUnitId). The parent may be
+named ("Finance") OR given by id ("org unit 2", "#2"). Answer it like this:
+  1. `search` the parent facet (org_units) with the name OR the number as `query`,
+  2. `get_by_id` the parent (depends_on the search),
+  3. `list` the child facet (people),
+  4. a `join` step linking the parent's primary key to the child's foreign key,
+     emitting the child rows (the members).
+To COUNT the members, add an `aggregate` (op="count") that `depends_on` the join.
+
+## Example (people in an org unit, by id)
+Question: "How many people are in org unit 2?"
+Correct output:
+{
+  "goal": "Count the employees of org unit 2",
+  "language": "en",
+  "intent": "data",
+  "steps": [
+    {"id": 1, "kind": "search", "facet": "org_units", "action": null, "query": "2", "params": {}, "depends_on": [], "description": "resolve org unit 2 by id"},
+    {"id": 2, "kind": "get_by_id", "facet": "org_units", "action": null, "query": null, "params": {}, "depends_on": [1], "description": "fetch the org unit"},
+    {"id": 3, "kind": "list", "facet": "people", "action": null, "query": null, "params": {}, "depends_on": [], "description": "list all people"},
+    {"id": 4, "kind": "join", "facet": "people", "action": null, "query": null, "params": {}, "depends_on": [2, 3], "description": "people whose orgUnitId is this unit", "join": {"left_step": 2, "left_key": "id", "right_step": 3, "right_key": "orgUnitId", "how": "inner", "emit": "right"}},
+    {"id": 5, "kind": "aggregate", "facet": "people", "action": null, "query": null, "params": {}, "depends_on": [4], "description": "count the members", "aggregate": {"op": "count", "metric": null, "group_by": null, "filters": [], "sort_desc": true, "limit": null}}
+  ]
+}
+For the NAMES of those people, return the same plan WITHOUT the final aggregate
+step (the join output already lists the members).
+
 ## Cross-entity rules (join: linking one entity's records to another)
 For questions that link entities ("what projects is the owner of system X working
 on", "datasets created by the manager of department Y"), use a `join` step:

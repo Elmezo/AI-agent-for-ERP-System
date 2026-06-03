@@ -14,11 +14,19 @@ from src.nodes.entity_resolver import EntityResolverNode
 class _FakeFacets:
     """Stub facet service whose search returns canned records."""
 
-    def __init__(self, records: list[dict[str, Any]]) -> None:
+    def __init__(
+        self, records: list[dict[str, Any]], by_id: dict[int, dict[str, Any]] | None = None
+    ) -> None:
         self._records = records
+        self._by_id = by_id or {}
+        self.search_calls = 0
 
     async def search(self, facet: str, term: str) -> ApiResult:
+        self.search_calls += 1
         return ApiResult.success(f"{facet}.search", self._records)
+
+    async def resolve_record(self, facet: str, entity_id: Any) -> dict[str, Any] | None:
+        return self._by_id.get(int(entity_id))
 
     def display_name(self, facet: str, record: dict[str, Any]) -> str:
         return str(record.get("name", record.get("id")))
@@ -69,6 +77,49 @@ async def test_single_match_resolves_without_clarification(registry: Registry) -
     assert "clarification" not in out
     assert out["resolved_entities"]["1"]["id"] == 1
     assert out["resolved_entities"]["1"]["label"] == "Ahmed Mohamed"
+
+
+def _state_for(facet: str, query: str, question: str) -> dict[str, Any]:
+    plan = ExecutionPlan(
+        goal="lookup",
+        steps=[PlanStep(id=1, kind=StepKind.SEARCH, facet=facet, query=query)],
+    )
+    return {"plan": plan.model_dump(mode="json"), "user_input": question}
+
+
+async def test_numeric_query_resolves_by_primary_key(registry: Registry) -> None:
+    """'org unit 2' -> resolve org_units id=2 directly, bypassing fuzzy search."""
+    facets = _FakeFacets(
+        records=[{"id": 3, "name": "IT Department"}],  # what a text search would wrongly return
+        by_id={2: {"id": 2, "name": "Finance Department"}},
+    )
+    node = EntityResolverNode(_FakeDeps(facets, registry))
+
+    out = await node(_state_for("org_units", "2", "people in org unit 2"))
+
+    assert out["resolved_entities"]["1"]["id"] == 2
+    assert out["resolved_entities"]["1"]["label"] == "Finance Department"
+    assert facets.search_calls == 0  # resolved by id, never fell back to search
+
+
+async def test_hash_id_query_resolves_by_primary_key(registry: Registry) -> None:
+    facets = _FakeFacets(records=[], by_id={2: {"id": 2, "name": "Finance Department"}})
+    node = EntityResolverNode(_FakeDeps(facets, registry))
+
+    out = await node(_state_for("org_units", "#2", "names in #2"))
+
+    assert out["resolved_entities"]["1"]["id"] == 2
+
+
+async def test_missing_numeric_id_falls_back_to_search(registry: Registry) -> None:
+    """An id with no record falls through to a normal search rather than failing."""
+    facets = _FakeFacets(records=[{"id": 99, "name": "Found via search"}], by_id={})
+    node = EntityResolverNode(_FakeDeps(facets, registry))
+
+    out = await node(_state_for("org_units", "42", "org unit 42"))
+
+    assert facets.search_calls == 1
+    assert out["resolved_entities"]["1"]["id"] == 99
 
 
 async def test_exact_match_among_partials_resolves(registry: Registry) -> None:

@@ -112,6 +112,11 @@ class FallbackPlanner:
 
         goal = question.strip()
 
+        # Child-of-parent ("people in org unit 2", "employees of Finance").
+        member_steps = self._detect_members(question, lowered)
+        if member_steps is not None:
+            return ExecutionPlan(goal=goal, steps=member_steps, language=language, used_fallback=True)
+
         # Cross-entity join ("projects owned by the owner of system X").
         join_steps = self._detect_join(question, lowered)
         if join_steps is not None:
@@ -170,6 +175,85 @@ class FallbackPlanner:
             PlanStep(id=1, kind=StepKind.LIST, facet=facet, description=f"List all {facet}")
         )
         return ExecutionPlan(goal=goal, steps=steps, language=language, used_fallback=True)
+
+    # --- child-of-parent (reverse relationship) heuristics -----------------
+    def _detect_members(self, question: str, lowered: str) -> list[PlanStep] | None:
+        """Detect "people in org unit N" / "employees of <Dept>" questions.
+
+        Config-driven: it consults the semantic catalog for a *reverse* concept
+        (e.g. ``org_units.members`` -> ``people.orgUnitId``) and, when both the
+        parent (unit) and child (people) are referenced, builds the deterministic
+        search -> get_by_id -> list -> join chain that lists the members. A
+        "how many" phrasing adds a count over the joined rows.
+        """
+        link = self._find_member_link(lowered)
+        if link is None:
+            return None
+        parent_facet, child_facet, child_key, parent_pk = link
+
+        parent_query = self._extract_parent_ref(question, lowered, parent_facet)
+        if not parent_query:
+            return None
+
+        steps: list[PlanStep] = [
+            PlanStep(id=1, kind=StepKind.SEARCH, facet=parent_facet, query=parent_query,
+                     description=f"Resolve {parent_facet} '{parent_query}'"),
+            PlanStep(id=2, kind=StepKind.GET_BY_ID, facet=parent_facet, depends_on=[1],
+                     description=f"Fetch the {parent_facet}"),
+            PlanStep(id=3, kind=StepKind.LIST, facet=child_facet,
+                     description=f"List all {child_facet}"),
+            PlanStep(
+                id=4, kind=StepKind.JOIN, facet=child_facet, depends_on=[2, 3],
+                description=f"{child_facet} belonging to the {parent_facet}",
+                join=JoinSpec(left_step=2, left_key=parent_pk, right_step=3,
+                              right_key=child_key, emit="right"),
+            ),
+        ]
+        if any(w in lowered for w in _COUNT_WORDS):
+            steps.append(
+                PlanStep(id=5, kind=StepKind.AGGREGATE, facet=child_facet, depends_on=[4],
+                         aggregate=AggregateSpec(op=AggregateOp.COUNT),
+                         description=f"Count the {child_facet}")
+            )
+        return steps
+
+    def _find_member_link(self, lowered: str) -> tuple[str, str, str, str] | None:
+        """Return ``(parent_facet, child_facet, child_key, parent_pk)`` for a
+        reverse concept whose parent and child are both referenced, else ``None``.
+        """
+        # Explicit child/membership indicators only. Deliberately excludes broad
+        # words like "who" so concept questions ("who manages X?") are unaffected.
+        member_words = ("member", "members", "team", "personnel", "عضو", "أعضاء", "اعضاء")
+        for parent_facet, semantics in self._registry.semantic.facets.items():
+            parent_words = self._synonyms.get(parent_facet, [])
+            if not any(w in lowered for w in parent_words):
+                continue
+            for concept in semantics.concepts.values():
+                if not concept.is_reverse or concept.reverse_facet is None:
+                    continue
+                child_facet = concept.reverse_facet
+                child_words = self._synonyms.get(child_facet, [])
+                if any(w in lowered for w in (*child_words, *member_words, concept.name.lower())):
+                    parent_def = self._registry.get_facet(parent_facet)
+                    parent_pk = parent_def.primary_key if parent_def else "id"
+                    return parent_facet, child_facet, concept.reverse_field, parent_pk
+        return None
+
+    def _extract_parent_ref(self, question: str, lowered: str, parent_facet: str) -> str | None:
+        """Extract the parent reference: a numeric id near a unit word, or a name."""
+        # 1) "org unit 2", "orgunit #2", "department number 2", "#2".
+        numeric = re.search(
+            r"(?:org[\s-]*units?|orgunit|departments?|dept|units?|قسم|إدارة|ادارة|وحدة)"
+            r"\b(?:\s*(?:#|no\.?|number|num|رقم))?\s*(\d+)",
+            lowered,
+        )
+        if numeric:
+            return numeric.group(1)
+        hashed = re.search(r"#\s*(\d+)", question)
+        if hashed:
+            return hashed.group(1)
+        # 2) Otherwise a capitalised name (e.g. "Finance", "Finance Department").
+        return self._extract_query(question, parent_facet)
 
     # --- cross-entity join heuristics --------------------------------------
     def _detect_join(self, question: str, lowered: str) -> list[PlanStep] | None:
