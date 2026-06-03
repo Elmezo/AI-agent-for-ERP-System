@@ -112,3 +112,17 @@ def test_plain_count_stays_list_not_aggregate(registry: Registry) -> None:
     plan = FallbackPlanner(registry).plan("How many projects are there?")
     assert _aggregate_step(plan) is None
     assert plan.steps[0].kind is StepKind.LIST
+
+
+# --- cross-entity join fallback --------------------------------------------
+def test_join_chain_for_crm_owner_projects(registry: Registry) -> None:
+    plan = FallbackPlanner(registry).plan(
+        "Who owns the CRM system and what projects is he working on?"
+    )
+    kinds = [s.kind for s in plan.steps]
+    assert kinds == [StepKind.SEARCH, StepKind.GET_BY_ID, StepKind.LIST, StepKind.JOIN]
+    assert plan.steps[0].query == "CRM"
+    join = plan.steps[-1].join
+    assert join is not None
+    assert join.left_step == 2 and join.left_key == "ownerId"
+    assert join.right_step == 3 and join.right_key == "ownerId"

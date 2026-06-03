@@ -220,6 +220,11 @@ class ResponseGeneratorNode:
         question = str(context.get("question") or "").lower()
         results = context.get("results", [])
 
+        # Related records produced by a join (e.g. the owner's projects). These
+        # are appended to the primary answer so a linked question reads as a
+        # single merged reply even without the LLM.
+        related = cls._join_records_summary(results, is_ar)
+
         # 1) Explicit concept focus values (e.g. resolved manager/owner name).
         focus_values = [
             str(item["value"]).strip()
@@ -227,12 +232,16 @@ class ResponseGeneratorNode:
             if item.get("value") not in (None, "")
         ]
         if focus_values:
-            return "، ".join(focus_values) if is_ar else ", ".join(focus_values)
+            primary = "، ".join(focus_values) if is_ar else ", ".join(focus_values)
+            return cls._merge(primary, related, is_ar)
 
         # 2) Match the question intent to a specific field on a single item.
         matched = cls._match_field_from_question(question, results)
         if matched is not None:
-            return matched
+            return cls._merge(matched, related, is_ar)
+
+        if related:
+            return related
 
         # 3) Counting questions.
         for block in results:
@@ -271,6 +280,28 @@ class ResponseGeneratorNode:
                 if any(word in question for word in triggers):
                     return str(value)
         return None
+
+    @classmethod
+    def _join_records_summary(cls, results: list[dict[str, Any]], is_ar: bool) -> str:
+        """Comma-joined labels of records produced by a join step."""
+        labels: list[str] = []
+        for block in results:
+            if block.get("api") != "join":
+                continue
+            for rec in block.get("items", []) or []:
+                if not isinstance(rec, dict):
+                    continue
+                label = next((str(rec[k]) for k in cls._LABEL_KEYS if rec.get(k)), None)
+                if label:
+                    labels.append(label)
+        return ("، ".join(labels) if is_ar else ", ".join(labels)) if labels else ""
+
+    @staticmethod
+    def _merge(primary: str, related: str, is_ar: bool) -> str:
+        """Combine a primary answer with related join records, if any."""
+        if not related:
+            return primary
+        return f"{primary} — {related}"
 
     @staticmethod
     def _iter_items(results: list[dict[str, Any]]):

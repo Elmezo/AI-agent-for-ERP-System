@@ -7,7 +7,7 @@ that owns the SQLite checkpointer, HTTP client, and memory connection.
 The pipeline is linear:
 
     planner -> entity_resolver -> api_selector -> executor ->
-    relationship_resolver -> analytics -> context_builder ->
+    relationship_resolver -> join -> analytics -> context_builder ->
     response_validator -> response_generator -> memory_manager
 
 Each node degrades gracefully (no exceptions escape into the graph), so a linear
@@ -34,6 +34,7 @@ from src.models.state import AgentState
 from src.nodes.analytics import AnalyticsNode
 from src.nodes.api_selector import ApiSelectorNode
 from src.nodes.context_builder import ContextBuilderNode
+from src.nodes.join import JoinNode
 from src.nodes.entity_resolver import EntityResolverNode
 from src.nodes.executor import ExecutorNode
 from src.nodes.memory_manager import MemoryManagerNode
@@ -59,6 +60,7 @@ def build_graph(deps: PipelineDeps) -> StateGraph:
     graph.add_node("api_selector", ApiSelectorNode(deps))
     graph.add_node("executor", ExecutorNode(deps))
     graph.add_node("relationship_resolver", RelationshipResolverNode(deps))
+    graph.add_node("join", JoinNode(deps))
     graph.add_node("analytics", AnalyticsNode(deps))
     graph.add_node("context_builder", ContextBuilderNode(deps))
     graph.add_node("response_validator", ResponseValidatorNode(deps))
@@ -70,7 +72,8 @@ def build_graph(deps: PipelineDeps) -> StateGraph:
     graph.add_edge("entity_resolver", "api_selector")
     graph.add_edge("api_selector", "executor")
     graph.add_edge("executor", "relationship_resolver")
-    graph.add_edge("relationship_resolver", "analytics")
+    graph.add_edge("relationship_resolver", "join")
+    graph.add_edge("join", "analytics")
     graph.add_edge("analytics", "context_builder")
     graph.add_edge("context_builder", "response_validator")
     graph.add_edge("response_validator", "response_generator")

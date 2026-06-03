@@ -17,6 +17,7 @@ from src.planner.llm_planner import LLMPlanner
 from src.services.analytics_service import AnalyticsService
 from src.services.api_client import ApiClient
 from src.services.facet_service import FacetService
+from src.services.joins import JoinEngine, build_default_engine
 from src.services.web_search_service import WebSearchService
 
 
@@ -33,6 +34,8 @@ class PipelineDeps:
     memory: MemoryRepository
     # Analytics ("SQL mode") engine; cheap to build, always present.
     analytics: AnalyticsService = field(default_factory=AnalyticsService)
+    # Cross-entity join engine (pluggable strategies; nested-loop by default).
+    joins: JoinEngine = field(default_factory=build_default_engine)
     # Optional: present only when a Tavily API key is configured.
     web_search: WebSearchService | None = None
 

@@ -57,6 +57,7 @@ class ContextBuilderNode:
             return self._build_analytics_context(state, plan, analytics, start)
 
         results = state.get("resolved_results") or state.get("execution_results", [])
+        consumed_lists = self._consumed_list_steps(plan)
 
         built_results: list[dict[str, Any]] = []
         focus: list[dict[str, Any]] = []
@@ -66,6 +67,11 @@ class ContextBuilderNode:
                 focus_item = self._build_field_focus(entry, results)
                 if focus_item:
                     focus.append(focus_item)
+                continue
+
+            # A raw list consumed by a join/aggregate is an intermediate; its
+            # meaningful subset is surfaced by the join output instead.
+            if entry.get("kind") == "list" and entry.get("step_id") in consumed_lists:
                 continue
 
             result = entry.get("result")
@@ -94,6 +100,22 @@ class ContextBuilderNode:
         }
 
     # --- helpers ------------------------------------------------------------
+    @staticmethod
+    def _consumed_list_steps(plan: ExecutionPlan) -> set[int]:
+        """Step ids of list results that feed a join or aggregate (intermediate).
+
+        These are hidden from the final context so the answer shows the entity
+        plus the *matched* rows (the join output), not the full raw list.
+        """
+        consumed: set[int] = set()
+        for step in plan.steps:
+            if step.join is not None:
+                consumed.add(step.join.left_step)
+                consumed.add(step.join.right_step)
+            if step.aggregate is not None:
+                consumed.update(step.depends_on)
+        return consumed
+
     def _build_recall_context(
         self, state: AgentState, plan: ExecutionPlan, start: float
     ) -> dict[str, Any]:

@@ -16,6 +16,7 @@ from src.models.plan import (
     ExecutionPlan,
     FilterClause,
     FilterOp,
+    JoinSpec,
     PlanIntent,
     PlanStep,
     StepKind,
@@ -109,8 +110,14 @@ class FallbackPlanner:
                 used_fallback=True,
             )
 
-        facet = self._detect_facet(lowered)
         goal = question.strip()
+
+        # Cross-entity join ("projects owned by the owner of system X").
+        join_steps = self._detect_join(question, lowered)
+        if join_steps is not None:
+            return ExecutionPlan(goal=goal, steps=join_steps, language=language, used_fallback=True)
+
+        facet = self._detect_facet(lowered)
 
         # Analytics ("SQL mode"): list the facet, then aggregate over the rows.
         # A detected metric can imply (or correct) the facet for analytic turns.
@@ -163,6 +170,53 @@ class FallbackPlanner:
             PlanStep(id=1, kind=StepKind.LIST, facet=facet, description=f"List all {facet}")
         )
         return ExecutionPlan(goal=goal, steps=steps, language=language, used_fallback=True)
+
+    # --- cross-entity join heuristics --------------------------------------
+    def _detect_join(self, question: str, lowered: str) -> list[PlanStep] | None:
+        """Detect "projects owned by the owner of system X" style questions.
+
+        Best-effort only (the LLM handles the general case). Builds the
+        search -> get_by_id -> list -> join chain on ``ownerId``.
+        """
+        has_projects = any(w in lowered for w in ("project", "projects", "مشروع", "مشاريع"))
+        has_system = "system" in lowered or "نظام" in lowered
+        has_owner_link = any(
+            w in lowered for w in
+            ("own", "owns", "owner", "working on", "work on", "responsible", "his", "her", "يملك", "مالك")
+        )
+        if not (has_projects and has_system and has_owner_link):
+            return None
+
+        name = self._extract_system_name(question)
+        if not name:
+            return None
+
+        return [
+            PlanStep(id=1, kind=StepKind.SEARCH, facet="systems", query=name,
+                     description=f"Find the {name} system"),
+            PlanStep(id=2, kind=StepKind.GET_BY_ID, facet="systems", depends_on=[1],
+                     description="Fetch the system (has ownerId)"),
+            PlanStep(id=3, kind=StepKind.LIST, facet="projects",
+                     description="List all projects"),
+            PlanStep(
+                id=4, kind=StepKind.JOIN, facet="projects", depends_on=[2, 3],
+                description="Projects owned by the system owner",
+                join=JoinSpec(left_step=2, left_key="ownerId", right_step=3,
+                              right_key="ownerId"),
+            ),
+        ]
+
+    @staticmethod
+    def _extract_system_name(question: str) -> str | None:
+        """Extract the system's name from 'the X system' or 'system X'."""
+        stop = {"the", "a", "an", "this", "that", "which", "what", "owns", "own", "of"}
+        before = re.search(r"([A-Za-z][\w&-]*)\s+system\b", question, re.IGNORECASE)
+        if before and before.group(1).lower() not in stop:
+            return before.group(1)
+        after = re.search(r"\bsystem\s+([A-Za-z][\w&-]*)", question, re.IGNORECASE)
+        if after and after.group(1).lower() not in stop:
+            return after.group(1)
+        return None
 
     # --- analytics heuristics ----------------------------------------------
     def _detect_aggregate(self, question: str, lowered: str) -> AggregateSpec | None:

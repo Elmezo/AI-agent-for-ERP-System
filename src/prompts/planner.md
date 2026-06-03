@@ -27,7 +27,7 @@ ${concepts}
 - "intent" MUST be exactly "data" or "chat".
 - "kind" MUST be EXACTLY ONE of these literal strings (copy one, do NOT include
   the others, do NOT include the "|" character):
-  "search"   "get_by_id"   "list"   "api"   "concept"   "aggregate"
+  "search"   "get_by_id"   "list"   "api"   "concept"   "aggregate"   "join"
 - "language" MUST be exactly "ar" or "en".
 - "facet" MUST be one facet name from the catalog, or null.
 - "depends_on" MUST be a list of integers (step ids), e.g. [1]. Use [] if none.
@@ -105,6 +105,38 @@ Notes:
 - For "how many datasets belong to Finance": op="count",
   filters=[orgUnit contains "Finance"].
 - For "projects grouped by owner": op="count", group_by="owner".
+
+## Cross-entity rules (join: linking one entity's records to another)
+For questions that link entities ("what projects is the owner of system X working
+on", "datasets created by the manager of department Y"), use a `join` step:
+  1. resolve and fetch the first entity (search + get_by_id), which carries a
+     foreign-key field (e.g. a system's `ownerId`),
+  2. `list` the target facet (e.g. all projects),
+  3. a `join` step that links them on the shared key and emits the matched rows.
+The "join" object fields:
+- "left_step": id of the step holding the driving record (e.g. the get_by_id).
+- "left_key": the field on the left record to match on (e.g. "ownerId").
+- "right_step": id of the `list` step holding the target rows.
+- "right_key": the field on the right rows to match (e.g. "ownerId").
+- "how": "inner" (default) or "left".
+- "emit": "right" (default) to return the matched target rows.
+You may add an `aggregate` step that `depends_on` the join step to compute over
+the joined rows (e.g. the average budget of the owner's projects).
+
+## Example (cross-entity join)
+Question: "Who owns the CRM system and what projects is he working on?"
+Correct output:
+{
+  "goal": "Find the CRM owner and the projects they own",
+  "language": "en",
+  "intent": "data",
+  "steps": [
+    {"id": 1, "kind": "search", "facet": "systems", "action": null, "query": "CRM", "params": {}, "depends_on": [], "description": "find the CRM system"},
+    {"id": 2, "kind": "get_by_id", "facet": "systems", "action": null, "query": null, "params": {}, "depends_on": [1], "description": "fetch the CRM system (has ownerId)"},
+    {"id": 3, "kind": "list", "facet": "projects", "action": null, "query": null, "params": {}, "depends_on": [], "description": "list all projects"},
+    {"id": 4, "kind": "join", "facet": "projects", "action": null, "query": null, "params": {}, "depends_on": [2, 3], "description": "projects owned by the CRM owner", "join": {"left_step": 2, "left_key": "ownerId", "right_step": 3, "right_key": "ownerId", "how": "inner", "emit": "right"}}
+  ]
+}
 
 ## Example (analytics)
 Question: "Top 5 projects by budget"

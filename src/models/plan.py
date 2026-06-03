@@ -22,6 +22,7 @@ class StepKind(str, Enum):
     API = "api"                # call an explicit registry endpoint
     CONCEPT = "concept"        # resolve a business concept (semantic catalog)
     AGGREGATE = "aggregate"    # compute analytics over a prior list step's rows
+    JOIN = "join"              # join two prior steps' rows on a key (cross-entity)
 
 
 class AggregateOp(str, Enum):
@@ -76,6 +77,37 @@ class AggregateSpec(BaseModel):
     limit: int | None = None
 
 
+class JoinType(str, Enum):
+    """How unmatched rows are treated in a join."""
+
+    INNER = "inner"  # keep only rows that match on both sides
+    LEFT = "left"    # keep every left row, with right=None when unmatched
+
+
+class JoinSpec(BaseModel):
+    """Declarative cross-entity join evaluated over two prior steps' rows.
+
+    Powers questions like "what projects is the CRM owner working on": join the
+    system record (``left_step``) to the projects list (``right_step``) on the
+    owner id, emitting the matched projects.
+
+    Example:
+        left_step=2 (system get_by_id), left_key="ownerId",
+        right_step=3 (projects list), right_key="ownerId",
+        how="inner", emit="right".
+    """
+
+    left_step: int
+    left_key: str
+    right_step: int
+    right_key: str
+    how: JoinType = JoinType.INNER
+    # Which side to surface as the result rows: "right", "left", or "both".
+    emit: str = "right"
+    # Optional join algorithm override (defaults to the engine's default).
+    strategy: str | None = None
+
+
 class PlanIntent(str, Enum):
     """High-level intent of a turn.
 
@@ -119,6 +151,8 @@ class PlanStep(BaseModel):
     # Present only for ``aggregate`` steps: the analytics to compute over the
     # rows produced by the list step(s) in ``depends_on`` (or the same facet).
     aggregate: AggregateSpec | None = None
+    # Present only for ``join`` steps: how to join two prior steps' rows.
+    join: JoinSpec | None = None
 
 
 class ExecutionPlan(BaseModel):
