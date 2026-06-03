@@ -1,0 +1,96 @@
+{
+  "people.search": {
+    "url": "/api/people/search",
+    "method": "GET",
+    "query_params": ["q"],
+    "facet": "people",
+    "description": "Search employees by name or email."
+  },
+  "people.get_by_id": {
+    "url": "/api/people/{id}",
+    "method": "GET",
+    "path_params": ["id"],
+    "facet": "people",
+    "description": "Get a single employee's full details by id."
+  },
+  "people.list": {
+    "url": "/api/people",
+    "method": "GET",
+    "facet": "people",
+    "description": "List all employees."
+  },
+  "org_units.search": {
+    "url": "/api/org-units/search",
+    "method": "GET",
+    "query_params": ["q"],
+    "facet": "org_units",
+    "description": "Search organizational units by name or code."
+  },
+  "org_units.get_by_id": {
+    "url": "/api/org-units/{id}",
+    "method": "GET",
+    "path_params": ["id"],
+    "facet": "org_units",
+    "description": "Get a single organizational unit by id."
+  },
+  "org_units.list": {
+    "url": "/api/org-units",
+    "method": "GET",
+    "facet": "org_units",
+    "description": "List all organizational units."
+  },
+  "systems.search": {
+    "url": "/api/systems/search",
+    "method": "GET",
+    "query_params": ["q"],
+    "facet": "systems",
+    "description": "Search systems/applications by name."
+  },
+  "systems.get_by_id": {
+    "url": "/api/systems/{id}",
+    "method": "GET",
+    "path_params": ["id"],
+    "facet": "systems",
+    "description": "Get a single system's details by id (includes ownerId)."
+  },
+  "systems.list": {
+    "url": "/api/systems",
+    "method": "GET",
+    "facet": "systems",
+    "description": "List all systems."
+  },
+  "systems.stakeholders": {
+    "url": "/api/systems/{id}/stakeholders",
+    "method": "GET",
+    "path_params": ["id"],
+    "facet": "systems",
+    "description": "Get the stakeholders (people) of a system."
+  },
+  "systems.interfaces": {
+    "url": "/api/systems/{id}/interfaces",
+    "method": "GET",
+    "path_params": ["id"],
+    "facet": "systems",
+    "description": "Get the interfaces connecting a system to other systems."
+  },
+  "datasets.search": {
+    "url": "/api/datasets/search",
+    "method": "GET",
+    "query_params": ["q"],
+    "facet": "datasets",
+    "description": "Search datasets by name."
+  },
+  "datasets.get_by_id": {
+    "url": "/api/datasets/{id}",
+    "method": "GET",
+    "path_params": ["id"],
+    "facet": "datasets",
+    "description": "Get a single dataset's details by id (includes createdBy, orgUnitId)."
+  },
+  "datasets.list": {
+    "url": "/api/datasets",
+    "method": "GET",
+    "facet": "datasets",
+    "description": "List all datasets."
+  }
+}

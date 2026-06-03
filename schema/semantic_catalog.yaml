@@ -1,0 +1,58 @@
+# Schema Understanding layer.
+#
+# Maps the *words users say* (business concepts) onto how to answer them:
+#   - field + target : the concept is a foreign key resolved via relationship
+#   - api            : the concept is answered by a dedicated endpoint
+#
+# This lets the agent answer questions like "who owns the finance system?"
+# even though there is no `get_owner` API.
+
+people:
+  business_name: Employees
+  concepts:
+    department:
+      field: orgUnitId
+      target: org_units
+      description: The organizational unit / department the employee belongs to.
+
+org_units:
+  business_name: Organizational Units
+  concepts:
+    manager:
+      field: managerId
+      target: people
+      description: The person who manages this unit.
+    parent:
+      field: parentId
+      target: org_units
+      description: The parent organizational unit.
+
+systems:
+  business_name: Systems
+  concepts:
+    owner:
+      field: ownerId
+      target: people
+      description: The person responsible for / owner of the system.
+    responsible:
+      field: ownerId
+      target: people
+      description: Synonym for owner ("who is responsible for system X").
+    stakeholders:
+      api: systems.stakeholders
+      description: People who have a stake in the system.
+    interfaces:
+      api: systems.interfaces
+      description: Other systems this system is connected to.
+
+datasets:
+  business_name: Datasets
+  concepts:
+    creator:
+      field: createdBy
+      target: people
+      description: The person who created the dataset.
+    owner_unit:
+      field: orgUnitId
+      target: org_units
+      description: The organizational unit that owns the dataset.

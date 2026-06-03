@@ -1,0 +1,138 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Dummy ERP API (placeholder discovery source)",
+    "version": "1.0.0",
+    "description": "Replace this with your real ERP's OpenAPI/Swagger export, then run `python -m src.discovery.generator --source openapi config/sources/openapi.json`."
+  },
+  "paths": {
+    "/api/people/search": {
+      "get": {
+        "operationId": "people.search",
+        "summary": "Search employees by name or email.",
+        "x-facet": "people",
+        "parameters": [
+          { "name": "q", "in": "query", "required": true, "schema": { "type": "string" } }
+        ]
+      }
+    },
+    "/api/people/{id}": {
+      "get": {
+        "operationId": "people.get_by_id",
+        "summary": "Get a single employee's full details by id.",
+        "x-facet": "people",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ]
+      }
+    },
+    "/api/people": {
+      "get": {
+        "operationId": "people.list",
+        "summary": "List all employees.",
+        "x-facet": "people"
+      }
+    },
+    "/api/org-units/search": {
+      "get": {
+        "operationId": "org_units.search",
+        "summary": "Search organizational units by name or code.",
+        "x-facet": "org_units",
+        "parameters": [
+          { "name": "q", "in": "query", "required": true, "schema": { "type": "string" } }
+        ]
+      }
+    },
+    "/api/org-units/{id}": {
+      "get": {
+        "operationId": "org_units.get_by_id",
+        "summary": "Get a single organizational unit by id.",
+        "x-facet": "org_units",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ]
+      }
+    },
+    "/api/org-units": {
+      "get": {
+        "operationId": "org_units.list",
+        "summary": "List all organizational units.",
+        "x-facet": "org_units"
+      }
+    },
+    "/api/systems/search": {
+      "get": {
+        "operationId": "systems.search",
+        "summary": "Search systems/applications by name.",
+        "x-facet": "systems",
+        "parameters": [
+          { "name": "q", "in": "query", "required": true, "schema": { "type": "string" } }
+        ]
+      }
+    },
+    "/api/systems/{id}": {
+      "get": {
+        "operationId": "systems.get_by_id",
+        "summary": "Get a single system's details by id (includes ownerId).",
+        "x-facet": "systems",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ]
+      }
+    },
+    "/api/systems": {
+      "get": {
+        "operationId": "systems.list",
+        "summary": "List all systems.",
+        "x-facet": "systems"
+      }
+    },
+    "/api/systems/{id}/stakeholders": {
+      "get": {
+        "operationId": "systems.stakeholders",
+        "summary": "Get the stakeholders (people) of a system.",
+        "x-facet": "systems",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ]
+      }
+    },
+    "/api/systems/{id}/interfaces": {
+      "get": {
+        "operationId": "systems.interfaces",
+        "summary": "Get the interfaces connecting a system to other systems.",
+        "x-facet": "systems",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ]
+      }
+    },
+    "/api/datasets/search": {
+      "get": {
+        "operationId": "datasets.search",
+        "summary": "Search datasets by name.",
+        "x-facet": "datasets",
+        "parameters": [
+          { "name": "q", "in": "query", "required": true, "schema": { "type": "string" } }
+        ]
+      }
+    },
+    "/api/datasets/{id}": {
+      "get": {
+        "operationId": "datasets.get_by_id",
+        "summary": "Get a single dataset's details by id (includes createdBy, orgUnitId).",
+        "x-facet": "datasets",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ]
+      }
+    },
+    "/api/datasets": {
+      "get": {
+        "operationId": "datasets.list",
+        "summary": "List all datasets.",
+        "x-facet": "datasets"
+      }
+    }
+  }
+}

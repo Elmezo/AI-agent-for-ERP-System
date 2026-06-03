@@ -1,0 +1,50 @@
+# Facet definitions: primary keys, display fields, standard APIs, and the
+# foreign-key relationships used by the Relationship Resolver to turn ids into
+# readable names. Edit freely; the agent reloads this at startup.
+#
+# relationship shorthand:
+#   <field>: "<target_facet>.<target_field>"
+# or long form:
+#   <field>: { target: <facet>, target_field: id, as_name: <output key> }
+
+people:
+  business_name: Employees
+  primary_key: id
+  display_fields: [name]
+  search_api: people.search
+  get_by_id_api: people.get_by_id
+  list_api: people.list
+  relationships:
+    orgUnitId: { target: org_units, as_name: orgUnit }
+
+org_units:
+  business_name: Organizational Units
+  primary_key: id
+  display_fields: [name]
+  search_api: org_units.search
+  get_by_id_api: org_units.get_by_id
+  list_api: org_units.list
+  relationships:
+    managerId: { target: people, as_name: manager }
+    parentId: { target: org_units, as_name: parent }
+
+systems:
+  business_name: Systems
+  primary_key: id
+  display_fields: [name]
+  search_api: systems.search
+  get_by_id_api: systems.get_by_id
+  list_api: systems.list
+  relationships:
+    ownerId: { target: people, as_name: owner }
+
+datasets:
+  business_name: Datasets
+  primary_key: id
+  display_fields: [name]
+  search_api: datasets.search
+  get_by_id_api: datasets.get_by_id
+  list_api: datasets.list
+  relationships:
+    createdBy: { target: people, as_name: createdByName }
+    orgUnitId: { target: org_units, as_name: orgUnit }

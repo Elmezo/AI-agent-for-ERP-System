@@ -1,0 +1,46 @@
+{
+  "info": {
+    "name": "Dummy ERP (placeholder discovery source)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Replace with your real Postman export, then run `python -m src.discovery.generator --source postman config/sources/postman_collection.json`."
+  },
+  "item": [
+    {
+      "name": "people.search",
+      "request": {
+        "method": "GET",
+        "description": "Search employees by name or email.",
+        "url": {
+          "raw": "{{base_url}}/api/people/search?q=ahmed",
+          "host": ["{{base_url}}"],
+          "path": ["api", "people", "search"],
+          "query": [{ "key": "q", "value": "ahmed" }]
+        }
+      }
+    },
+    {
+      "name": "people.get_by_id",
+      "request": {
+        "method": "GET",
+        "description": "Get a single employee by id.",
+        "url": {
+          "raw": "{{base_url}}/api/people/:id",
+          "host": ["{{base_url}}"],
+          "path": ["api", "people", ":id"]
+        }
+      }
+    },
+    {
+      "name": "systems.get_by_id",
+      "request": {
+        "method": "GET",
+        "description": "Get a single system by id.",
+        "url": {
+          "raw": "{{base_url}}/api/systems/:id",
+          "host": ["{{base_url}}"],
+          "path": ["api", "systems", ":id"]
+        }
+      }
+    }
+  ]
+}

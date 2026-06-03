@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Data / runtime artifacts
+data/
+*.db
+*.sqlite3
+
+# IDE
+.cursor/
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
