@@ -1,0 +1,6 @@
+{
+  "git.enabled": true,
+  "git.path": "C:\\Program Files\\Git\\cmd\\git.exe",
+  "git.autoRepositoryDetection": true,
+  "git.openRepositoryInParentFolders": "always"
+}
