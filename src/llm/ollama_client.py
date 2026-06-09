@@ -74,6 +74,8 @@ class OllamaLLM:
         # crashes the llama runner during model load (e.g. Maxwell CC 5.0).
         if settings.ollama_num_gpu is not None:
             common["num_gpu"] = settings.ollama_num_gpu
+        if settings.ollama_reasoning is not None:
+            common["reasoning"] = settings.ollama_reasoning
         # Free-form text generation.
         self._text_llm = ChatOllama(**common)
         # JSON-constrained generation for structured output.

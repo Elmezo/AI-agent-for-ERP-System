@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     # --- LLM (Ollama) -------------------------------------------------------
     ollama_model: str = "llama3.1:latest"
     ollama_base_url: str = "http://127.0.0.1:11434"
+    # ``False`` disables thinking mode (recommended for Gemma 4 hybrid models).
+    # ``None`` lets Ollama use the model's default reasoning behaviour.
+    ollama_reasoning: bool | None = None
     ollama_temperature: float = 0.1
     # Generous timeout so a slow cold-start (model load) doesn't drop the
     # natural-language answer to the deterministic fallback.
